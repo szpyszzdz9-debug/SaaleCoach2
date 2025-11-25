@@ -1,0 +1,1846 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PT Management System v2.0</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { touch-action: pan-y; overscroll-behavior-y: contain; }
+        input[type="number"] { -moz-appearance: textfield; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // ===== FIREBASE CONFIGURATION =====
+        const firebaseConfig = {
+            apiKey: "DEINE_API_KEY_HIER",
+            authDomain: "DEIN_PROJECT.firebaseapp.com",
+            projectId: "DEIN_PROJECT_ID",
+            storageBucket: "DEIN_PROJECT.appspot.com",
+            messagingSenderId: "DEINE_SENDER_ID",
+            appId: "DEINE_APP_ID"
+        };
+
+        let db = null;
+        let firebaseInitialized = false;
+
+        try {
+            if (firebaseConfig.apiKey !== "DEINE_API_KEY_HIER") {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                firebaseInitialized = true;
+                console.log("Firebase erfolgreich initialisiert");
+            } else {
+                console.log("Firebase nicht konfiguriert - lokaler Modus aktiv");
+            }
+        } catch (error) {
+            console.error("Firebase Initialisierungsfehler:", error);
+        }
+
+        // ===== ICON COMPONENTS =====
+        const Icons = {
+            Dumbbell: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h3m3 0h3m3 0h3m3 0h3M6 6v8m12-8v8M9 6v8m6-8v8" /></svg>),
+            Plus: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>),
+            Save: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>),
+            Clock: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>),
+            Check: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>),
+            Edit: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>),
+            Search: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>),
+            Calendar: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>),
+            ArrowLeft: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>),
+            Settings: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>),
+            Trash: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>),
+            Cloud: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>),
+            Database: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>),
+            Clipboard: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>),
+            Copy: () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>),
+        };
+
+        // ===== MAIN APP COMPONENT =====
+        const PTManagementSystem = () => {
+            // State Management
+            const [clients, setClients] = useState([]);
+            const [exerciseDatabase, setExerciseDatabase] = useState([]);
+            const [planTemplates, setPlanTemplates] = useState([]);
+            const [activeView, setActiveView] = useState('home');
+            const [selectedClient, setSelectedClient] = useState(null);
+            const [selectedClient2, setSelectedClient2] = useState(null); // For 2:1 training
+            const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
+            const [selectedPlanIndex2, setSelectedPlanIndex2] = useState(0);
+            const [selectedTemplate, setSelectedTemplate] = useState(null);
+            const [selectedHistoryExercise, setSelectedHistoryExercise] = useState(null); // For exercise history
+            const [sessionExercises, setSessionExercises] = useState([]);
+            const [sessionExercises2, setSessionExercises2] = useState([]);
+            const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+            const [currentExerciseIndex2, setCurrentExerciseIndex2] = useState(0);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [pauseTimer, setPauseTimer] = useState(0);
+            const [timerActive, setTimerActive] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('synced');
+            
+            // Modals
+            const [showAddClient, setShowAddClient] = useState(false);
+            const [showAddExercise, setShowAddExercise] = useState(false);
+            const [showAddTemplate, setShowAddTemplate] = useState(false);
+            const [showAssignPlan, setShowAssignPlan] = useState(false);
+            const [showSelectSecondClient, setShowSelectSecondClient] = useState(false);
+            
+            // Form Data
+            const [newClient, setNewClient] = useState({ name: '' });
+            const [newExercise, setNewExercise] = useState({
+                name: '',
+                device: '',
+                category: '',
+                description: ''
+            });
+            const [newTemplate, setNewTemplate] = useState({
+                name: '',
+                description: '',
+                exercises: [] // Array of exercise IDs from database
+            });
+            const [selectedExercisesForTemplate, setSelectedExercisesForTemplate] = useState([]);
+
+            // ===== LOCAL STORAGE FUNCTIONS =====
+            const saveToLocalStorage = (data) => {
+                try {
+                    localStorage.setItem('pt-data-v2', JSON.stringify(data));
+                } catch (error) {
+                    console.error('LocalStorage Fehler:', error);
+                }
+            };
+
+            const loadFromLocalStorage = () => {
+                try {
+                    const stored = localStorage.getItem('pt-data-v2');
+                    if (stored) {
+                        const data = JSON.parse(stored);
+                        setClients(data.clients || []);
+                        setExerciseDatabase(data.exerciseDatabase || []);
+                        setPlanTemplates(data.planTemplates || []);
+                    } else {
+                        // Demo data
+                        initializeDemoData();
+                    }
+                } catch (error) {
+                    console.error('LocalStorage Fehler:', error);
+                    initializeDemoData();
+                }
+            };
+
+            const initializeDemoData = () => {
+                const demoExercises = [
+                    { id: 'ex1', name: 'Beinpresse', device: 'LP-01', category: 'Beine', description: '45° Beinpresse' },
+                    { id: 'ex2', name: 'Brustpresse', device: 'CP-05', category: 'Brust', description: 'Horizontale Brustpresse' },
+                    { id: 'ex3', name: 'Latzug', device: 'LZ-12', category: 'Rücken', description: 'Latzug zur Brust' },
+                    { id: 'ex4', name: 'Butterfly', device: 'BF-08', category: 'Brust', description: 'Butterfly / Pec Deck' },
+                    { id: 'ex5', name: 'Rudern', device: 'RW-15', category: 'Rücken', description: 'Horizontales Rudern' },
+                ];
+
+                const demoTemplates = [
+                    {
+                        id: 'tpl1',
+                        name: 'Ganzkörper Basis',
+                        description: 'Grundlegendes Ganzkörper-Training',
+                        exercises: ['ex1', 'ex2', 'ex3']
+                    }
+                ];
+
+                const demoClients = [
+                    {
+                        id: 'client1',
+                        name: 'Demo Kunde',
+                        lastSession: new Date().toISOString().split('T')[0],
+                        deviceSettings: {
+                            // Global device settings per client
+                            'ex1': 'Sitz: 3, Rücken: 2',
+                            'ex2': 'Sitz: 4, Griff: mittel',
+                            'ex3': 'Sitz: 5'
+                        },
+                        trainingPlans: [
+                            {
+                                templateId: 'tpl1',
+                                templateName: 'Ganzkörper Basis',
+                                exercises: [
+                                    { exerciseId: 'ex1', weight: 100, reps: 12, sets: 1, settings: 'Sitz: 3, Rücken: 2' },
+                                    { exerciseId: 'ex2', weight: 60, reps: 10, sets: 1, settings: 'Sitz: 4, Griff: mittel' },
+                                    { exerciseId: 'ex3', weight: 50, reps: 12, sets: 1, settings: 'Sitz: 5' }
+                                ]
+                            }
+                        ]
+                    }
+                ];
+
+                setExerciseDatabase(demoExercises);
+                setPlanTemplates(demoTemplates);
+                setClients(demoClients);
+                saveToLocalStorage({ exerciseDatabase: demoExercises, planTemplates: demoTemplates, clients: demoClients });
+            };
+
+            // ===== FIREBASE FUNCTIONS =====
+            const syncWithFirebase = async () => {
+                if (!firebaseInitialized) return;
+                
+                try {
+                    setSyncStatus('syncing');
+                    
+                    // Save all data to Firebase
+                    const batch = db.batch();
+                    
+                    // Clear and save exercise database
+                    const exercisesRef = db.collection('exerciseDatabase');
+                    exerciseDatabase.forEach(ex => {
+                        batch.set(exercisesRef.doc(ex.id), ex);
+                    });
+                    
+                    // Clear and save templates
+                    const templatesRef = db.collection('planTemplates');
+                    planTemplates.forEach(tpl => {
+                        batch.set(templatesRef.doc(tpl.id), tpl);
+                    });
+                    
+                    // Clear and save clients
+                    const clientsRef = db.collection('clients');
+                    clients.forEach(client => {
+                        batch.set(clientsRef.doc(client.id), client);
+                    });
+                    
+                    await batch.commit();
+                    setSyncStatus('synced');
+                } catch (error) {
+                    console.error('Sync error:', error);
+                    setSyncStatus('error');
+                }
+            };
+
+            // ===== LOAD ON MOUNT =====
+            useEffect(() => {
+                loadFromLocalStorage();
+            }, []);
+
+            // ===== TIMER EFFECT =====
+            useEffect(() => {
+                let interval;
+                if (timerActive && pauseTimer > 0) {
+                    interval = setInterval(() => {
+                        setPauseTimer(prev => {
+                            if (prev <= 1) {
+                                setTimerActive(false);
+                                return 0;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+                }
+                return () => clearInterval(interval);
+            }, [timerActive, pauseTimer]);
+
+            // ===== EXERCISE DATABASE MANAGEMENT =====
+            const addExerciseToDatabase = () => {
+                if (!newExercise.name.trim() || !newExercise.device.trim()) return;
+                
+                const exercise = {
+                    id: 'ex' + Date.now(),
+                    ...newExercise
+                };
+                
+                const updated = [...exerciseDatabase, exercise];
+                setExerciseDatabase(updated);
+                saveToLocalStorage({ exerciseDatabase: updated, planTemplates, clients });
+                
+                setNewExercise({ name: '', device: '', category: '', description: '' });
+                setShowAddExercise(false);
+            };
+
+            const deleteExerciseFromDatabase = (exerciseId) => {
+                if (!confirm('Übung aus Datenbank löschen? Dies betrifft alle Trainingspläne!')) return;
+                
+                const updated = exerciseDatabase.filter(ex => ex.id !== exerciseId);
+                setExerciseDatabase(updated);
+                saveToLocalStorage({ exerciseDatabase: updated, planTemplates, clients });
+            };
+
+            // ===== TEMPLATE MANAGEMENT =====
+            const addTemplate = () => {
+                if (!newTemplate.name.trim() || selectedExercisesForTemplate.length === 0) {
+                    alert('Bitte Namen eingeben und mindestens eine Übung auswählen!');
+                    return;
+                }
+                
+                const template = {
+                    id: 'tpl' + Date.now(),
+                    name: newTemplate.name,
+                    description: newTemplate.description,
+                    exercises: selectedExercisesForTemplate
+                };
+                
+                const updated = [...planTemplates, template];
+                setPlanTemplates(updated);
+                saveToLocalStorage({ exerciseDatabase, planTemplates: updated, clients });
+                
+                setNewTemplate({ name: '', description: '', exercises: [] });
+                setSelectedExercisesForTemplate([]);
+                setShowAddTemplate(false);
+            };
+
+            const deleteTemplate = (templateId) => {
+                if (!confirm('Trainingsplan-Vorlage löschen?')) return;
+                
+                const updated = planTemplates.filter(t => t.id !== templateId);
+                setPlanTemplates(updated);
+                saveToLocalStorage({ exerciseDatabase, planTemplates: updated, clients });
+            };
+
+            // ===== CLIENT MANAGEMENT =====
+            const addClient = () => {
+                if (!newClient.name.trim()) return;
+                
+                const client = {
+                    id: 'client' + Date.now(),
+                    name: newClient.name,
+                    trainingPlans: [],
+                    lastSession: new Date().toISOString().split('T')[0]
+                };
+                
+                const updated = [...clients, client];
+                setClients(updated);
+                saveToLocalStorage({ exerciseDatabase, planTemplates, clients: updated });
+                
+                setNewClient({ name: '' });
+                setShowAddClient(false);
+            };
+
+            const deleteClient = (clientId) => {
+                if (!confirm('Kunde wirklich löschen?')) return;
+                
+                const updated = clients.filter(c => c.id !== clientId);
+                setClients(updated);
+                saveToLocalStorage({ exerciseDatabase, planTemplates, clients: updated });
+            };
+
+            const assignPlanToClient = (templateId) => {
+                if (!selectedClient) return;
+                
+                const template = planTemplates.find(t => t.id === templateId);
+                if (!template) return;
+                
+                // Initialize deviceSettings if not exists
+                if (!selectedClient.deviceSettings) {
+                    selectedClient.deviceSettings = {};
+                }
+                
+                // Create client-specific plan from template
+                const clientPlan = {
+                    templateId: template.id,
+                    templateName: template.name,
+                    exercises: template.exercises.map(exerciseId => {
+                        const exercise = exerciseDatabase.find(ex => ex.id === exerciseId);
+                        return {
+                            exerciseId: exerciseId,
+                            weight: 0,
+                            reps: 10,
+                            sets: 1,
+                            settings: selectedClient.deviceSettings[exerciseId] || '' // Use saved settings if available
+                        };
+                    })
+                };
+                
+                const updatedClient = {
+                    ...selectedClient,
+                    trainingPlans: [...(selectedClient.trainingPlans || []), clientPlan]
+                };
+                
+                const updatedClients = clients.map(c => c.id === selectedClient.id ? updatedClient : c);
+                setClients(updatedClients);
+                setSelectedClient(updatedClient);
+                saveToLocalStorage({ exerciseDatabase, planTemplates, clients: updatedClients });
+                
+                setShowAssignPlan(false);
+            };
+
+            const updateClientExercise = (planIndex, exerciseIndex, field, value) => {
+                const updatedClient = { ...selectedClient };
+                updatedClient.trainingPlans[planIndex].exercises[exerciseIndex][field] = value;
+                
+                // If updating settings, also save to global deviceSettings
+                if (field === 'settings') {
+                    const exerciseId = updatedClient.trainingPlans[planIndex].exercises[exerciseIndex].exerciseId;
+                    if (!updatedClient.deviceSettings) {
+                        updatedClient.deviceSettings = {};
+                    }
+                    updatedClient.deviceSettings[exerciseId] = value;
+                }
+                
+                const updatedClients = clients.map(c => c.id === selectedClient.id ? updatedClient : c);
+                setClients(updatedClients);
+                setSelectedClient(updatedClient);
+                saveToLocalStorage({ exerciseDatabase, planTemplates, clients: updatedClients });
+            };
+
+            const deleteClientPlan = (planIndex) => {
+                if (!confirm('Trainingsplan wirklich löschen?')) return;
+                
+                const updatedClient = { ...selectedClient };
+                updatedClient.trainingPlans.splice(planIndex, 1);
+                
+                const updatedClients = clients.map(c => c.id === selectedClient.id ? updatedClient : c);
+                setClients(updatedClients);
+                setSelectedClient(updatedClient);
+                saveToLocalStorage({ exerciseDatabase, planTemplates, clients: updatedClients });
+            };
+
+            // ===== SESSION MANAGEMENT =====
+            const startSession = (client, planIndex, client2 = null, planIndex2 = null) => {
+                const plan = client.trainingPlans[planIndex];
+                
+                const sessionExercises = plan.exercises.map(ex => {
+                    const dbExercise = exerciseDatabase.find(e => e.id === ex.exerciseId);
+                    return {
+                        ...ex,
+                        ...dbExercise,
+                        completed: false,
+                        currentSet: 1
+                    };
+                });
+                
+                setSelectedClient(client);
+                setSelectedPlanIndex(planIndex);
+                setSessionExercises(sessionExercises);
+                setCurrentExerciseIndex(0);
+                
+                // If 2:1 training mode
+                if (client2 && planIndex2 !== null) {
+                    const plan2 = client2.trainingPlans[planIndex2];
+                    const sessionExercises2 = plan2.exercises.map(ex => {
+                        const dbExercise = exerciseDatabase.find(e => e.id === ex.exerciseId);
+                        return {
+                            ...ex,
+                            ...dbExercise,
+                            completed: false,
+                            currentSet: 1
+                        };
+                    });
+                    
+                    setSelectedClient2(client2);
+                    setSelectedPlanIndex2(planIndex2);
+                    setSessionExercises2(sessionExercises2);
+                    setCurrentExerciseIndex2(0);
+                } else {
+                    setSelectedClient2(null);
+                    setSessionExercises2([]);
+                }
+                
+                setActiveView('activeSession');
+            };
+
+            const prepareSecondClient = (client, planIndex) => {
+                // Store first client info temporarily
+                setSelectedClient({ client, planIndex });
+                setShowSelectSecondClient(true);
+            };
+
+            const startDualSession = (client2, planIndex2) => {
+                const firstClientData = selectedClient;
+                startSession(firstClientData.client, firstClientData.planIndex, client2, planIndex2);
+                setShowSelectSecondClient(false);
+            };
+
+            const completeSet = (exerciseIndex, isClient2 = false) => {
+                if (isClient2) {
+                    setSessionExercises2(prev => {
+                        const updated = [...prev];
+                        if (updated[exerciseIndex].currentSet < updated[exerciseIndex].sets) {
+                            updated[exerciseIndex].currentSet++;
+                            setPauseTimer(60);
+                            setTimerActive(true);
+                        } else {
+                            updated[exerciseIndex].completed = true;
+                            if (exerciseIndex < sessionExercises2.length - 1) {
+                                setCurrentExerciseIndex2(exerciseIndex + 1);
+                            }
+                        }
+                        return updated;
+                    });
+                } else {
+                    setSessionExercises(prev => {
+                        const updated = [...prev];
+                        if (updated[exerciseIndex].currentSet < updated[exerciseIndex].sets) {
+                            updated[exerciseIndex].currentSet++;
+                            setPauseTimer(60);
+                            setTimerActive(true);
+                        } else {
+                            updated[exerciseIndex].completed = true;
+                            if (exerciseIndex < sessionExercises.length - 1) {
+                                setCurrentExerciseIndex(exerciseIndex + 1);
+                            }
+                        }
+                        return updated;
+                    });
+                }
+            };
+
+            const updateExerciseData = (exerciseIndex, field, value, isClient2 = false) => {
+                if (isClient2) {
+                    setSessionExercises2(prev => {
+                        const updated = [...prev];
+                        updated[exerciseIndex][field] = value;
+                        return updated;
+                    });
+                } else {
+                    setSessionExercises(prev => {
+                        const updated = [...prev];
+                        updated[exerciseIndex][field] = value;
+                        return updated;
+                    });
+                }
+            };
+
+            const saveSession = () => {
+                const timestamp = new Date().toISOString();
+                const sessionDate = timestamp.split('T')[0];
+                
+                // Save first client
+                const updatedClient = { ...selectedClient };
+                updatedClient.lastSession = sessionDate;
+                
+                // Initialize deviceSettings and history if not exists
+                if (!updatedClient.deviceSettings) {
+                    updatedClient.deviceSettings = {};
+                }
+                if (!updatedClient.trainingHistory) {
+                    updatedClient.trainingHistory = [];
+                }
+                
+                // Create history entry for this session
+                const historyEntry = {
+                    timestamp: timestamp,
+                    date: sessionDate,
+                    planId: updatedClient.trainingPlans[selectedPlanIndex].templateId,
+                    planName: updatedClient.trainingPlans[selectedPlanIndex].templateName,
+                    exercises: []
+                };
+                
+                sessionExercises.forEach((sessionEx, idx) => {
+                    updatedClient.trainingPlans[selectedPlanIndex].exercises[idx].weight = sessionEx.weight;
+                    updatedClient.trainingPlans[selectedPlanIndex].exercises[idx].reps = sessionEx.reps;
+                    updatedClient.trainingPlans[selectedPlanIndex].exercises[idx].sets = sessionEx.sets;
+                    updatedClient.trainingPlans[selectedPlanIndex].exercises[idx].settings = sessionEx.settings;
+                    
+                    // Save settings globally for this exercise
+                    updatedClient.deviceSettings[sessionEx.exerciseId] = sessionEx.settings;
+                    
+                    // Add to history
+                    historyEntry.exercises.push({
+                        exerciseId: sessionEx.exerciseId,
+                        exerciseName: sessionEx.name,
+                        device: sessionEx.device,
+                        weight: sessionEx.weight,
+                        reps: sessionEx.reps,
+                        sets: sessionEx.sets,
+                        settings: sessionEx.settings
+                    });
+                });
+                
+                // Add history entry
+                updatedClient.trainingHistory.unshift(historyEntry); // Add to beginning
+                
+                // Keep only last 100 sessions
+                if (updatedClient.trainingHistory.length > 100) {
+                    updatedClient.trainingHistory = updatedClient.trainingHistory.slice(0, 100);
+                }
+                
+                let updatedClients = clients.map(c => c.id === selectedClient.id ? updatedClient : c);
+                
+                // Save second client if 2:1 mode
+                if (selectedClient2) {
+                    const updatedClient2 = { ...selectedClient2 };
+                    updatedClient2.lastSession = sessionDate;
+                    
+                    // Initialize deviceSettings and history if not exists
+                    if (!updatedClient2.deviceSettings) {
+                        updatedClient2.deviceSettings = {};
+                    }
+                    if (!updatedClient2.trainingHistory) {
+                        updatedClient2.trainingHistory = [];
+                    }
+                    
+                    // Create history entry for client 2
+                    const historyEntry2 = {
+                        timestamp: timestamp,
+                        date: sessionDate,
+                        planId: updatedClient2.trainingPlans[selectedPlanIndex2].templateId,
+                        planName: updatedClient2.trainingPlans[selectedPlanIndex2].templateName,
+                        exercises: []
+                    };
+                    
+                    sessionExercises2.forEach((sessionEx, idx) => {
+                        updatedClient2.trainingPlans[selectedPlanIndex2].exercises[idx].weight = sessionEx.weight;
+                        updatedClient2.trainingPlans[selectedPlanIndex2].exercises[idx].reps = sessionEx.reps;
+                        updatedClient2.trainingPlans[selectedPlanIndex2].exercises[idx].sets = sessionEx.sets;
+                        updatedClient2.trainingPlans[selectedPlanIndex2].exercises[idx].settings = sessionEx.settings;
+                        
+                        // Save settings globally for this exercise
+                        updatedClient2.deviceSettings[sessionEx.exerciseId] = sessionEx.settings;
+                        
+                        // Add to history
+                        historyEntry2.exercises.push({
+                            exerciseId: sessionEx.exerciseId,
+                            exerciseName: sessionEx.name,
+                            device: sessionEx.device,
+                            weight: sessionEx.weight,
+                            reps: sessionEx.reps,
+                            sets: sessionEx.sets,
+                            settings: sessionEx.settings
+                        });
+                    });
+                    
+                    // Add history entry
+                    updatedClient2.trainingHistory.unshift(historyEntry2);
+                    
+                    // Keep only last 100 sessions
+                    if (updatedClient2.trainingHistory.length > 100) {
+                        updatedClient2.trainingHistory = updatedClient2.trainingHistory.slice(0, 100);
+                    }
+                    
+                    updatedClients = updatedClients.map(c => c.id === selectedClient2.id ? updatedClient2 : c);
+                }
+                
+                setClients(updatedClients);
+                saveToLocalStorage({ exerciseDatabase, planTemplates, clients: updatedClients });
+                
+                alert(selectedClient2 ? 'Sessions für beide Kunden gespeichert!' : 'Session gespeichert!');
+                setActiveView('clientList');
+            };
+
+            const filteredClients = clients.filter(client =>
+                client.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            // ===== RENDER HOME/MAIN MENU =====
+            if (activeView === 'home') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <Icons.Dumbbell />
+                                        <h1 className="text-4xl font-bold text-slate-800">PT Management System</h1>
+                                    </div>
+                                    {syncStatus === 'syncing' && (
+                                        <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full flex items-center gap-2">
+                                            <Icons.Cloud /> Synchronisiert...
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <button
+                                        onClick={() => setActiveView('clientList')}
+                                        className="p-8 bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl hover:shadow-lg transition-all border-2 border-green-200"
+                                    >
+                                        <Icons.Dumbbell />
+                                        <h3 className="text-2xl font-bold text-slate-800 mt-4 mb-2">Kunden</h3>
+                                        <p className="text-slate-600">Training starten & verwalten</p>
+                                        <div className="mt-4 text-3xl font-bold text-green-600">{clients.length}</div>
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => setActiveView('exerciseDatabase')}
+                                        className="p-8 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl hover:shadow-lg transition-all border-2 border-blue-200"
+                                    >
+                                        <Icons.Database />
+                                        <h3 className="text-2xl font-bold text-slate-800 mt-4 mb-2">Übungs-Datenbank</h3>
+                                        <p className="text-slate-600">Alle Geräte & Übungen</p>
+                                        <div className="mt-4 text-3xl font-bold text-blue-600">{exerciseDatabase.length}</div>
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => setActiveView('planTemplates')}
+                                        className="p-8 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl hover:shadow-lg transition-all border-2 border-purple-200"
+                                    >
+                                        <Icons.Clipboard />
+                                        <h3 className="text-2xl font-bold text-slate-800 mt-4 mb-2">Trainingsplan-Vorlagen</h3>
+                                        <p className="text-slate-600">Wiederverwendbare Pläne</p>
+                                        <div className="mt-4 text-3xl font-bold text-purple-600">{planTemplates.length}</div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // ===== RENDER EXERCISE DATABASE =====
+            if (activeView === 'exerciseDatabase') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setActiveView('home')} className="p-2 hover:bg-slate-100 rounded-lg">
+                                            <Icons.ArrowLeft />
+                                        </button>
+                                        <div>
+                                            <h1 className="text-3xl font-bold text-slate-800">Übungs-Datenbank</h1>
+                                            <p className="text-slate-500">Alle verfügbaren Geräte und Übungen</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowAddExercise(true)}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700"
+                                    >
+                                        <Icons.Plus />
+                                        Übung hinzufügen
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Exercise Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {exerciseDatabase.map(exercise => (
+                                    <div key={exercise.id} className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <h3 className="text-xl font-bold text-slate-800">{exercise.name}</h3>
+                                                <span className="inline-block mt-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
+                                                    {exercise.device}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => deleteExerciseFromDatabase(exercise.id)}
+                                                className="p-2 hover:bg-red-100 rounded-lg text-red-600"
+                                            >
+                                                <Icons.Trash />
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-sm text-slate-600">
+                                                <span className="font-semibold">Kategorie:</span> {exercise.category || 'Keine'}
+                                            </p>
+                                            {exercise.description && (
+                                                <p className="text-sm text-slate-600">{exercise.description}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {exerciseDatabase.length === 0 && (
+                                <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+                                    <p className="text-slate-500 text-lg mb-4">Noch keine Übungen in der Datenbank</p>
+                                    <button
+                                        onClick={() => setShowAddExercise(true)}
+                                        className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                                    >
+                                        Erste Übung hinzufügen
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Add Exercise Modal */}
+                            {showAddExercise && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                                    <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+                                        <h3 className="text-2xl font-bold mb-4">Neue Übung zur Datenbank</h3>
+                                        <div className="space-y-4">
+                                            <input
+                                                type="text"
+                                                placeholder="Übungsname (z.B. Beinpresse)"
+                                                value={newExercise.name}
+                                                onChange={(e) => setNewExercise({...newExercise, name: e.target.value})}
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Gerätecode (z.B. LP-01)"
+                                                value={newExercise.device}
+                                                onChange={(e) => setNewExercise({...newExercise, device: e.target.value})}
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Kategorie (z.B. Beine, Brust)"
+                                                value={newExercise.category}
+                                                onChange={(e) => setNewExercise({...newExercise, category: e.target.value})}
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                                            />
+                                            <textarea
+                                                placeholder="Beschreibung (optional)"
+                                                value={newExercise.description}
+                                                onChange={(e) => setNewExercise({...newExercise, description: e.target.value})}
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none h-24"
+                                            />
+                                        </div>
+                                        <div className="flex gap-3 mt-6">
+                                            <button
+                                                onClick={() => {
+                                                    setShowAddExercise(false);
+                                                    setNewExercise({ name: '', device: '', category: '', description: '' });
+                                                }}
+                                                className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-300"
+                                            >
+                                                Abbrechen
+                                            </button>
+                                            <button
+                                                onClick={addExerciseToDatabase}
+                                                className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                                            >
+                                                Hinzufügen
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ===== RENDER PLAN TEMPLATES =====
+            if (activeView === 'planTemplates') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setActiveView('home')} className="p-2 hover:bg-slate-100 rounded-lg">
+                                            <Icons.ArrowLeft />
+                                        </button>
+                                        <div>
+                                            <h1 className="text-3xl font-bold text-slate-800">Trainingsplan-Vorlagen</h1>
+                                            <p className="text-slate-500">Wiederverwendbare Trainingspläne erstellen</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowAddTemplate(true)}
+                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+                                    >
+                                        <Icons.Plus />
+                                        Vorlage erstellen
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Template Cards */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {planTemplates.map(template => (
+                                    <div key={template.id} className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-slate-800">{template.name}</h3>
+                                                {template.description && (
+                                                    <p className="text-slate-500 mt-1">{template.description}</p>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => deleteTemplate(template.id)}
+                                                className="p-2 hover:bg-red-100 rounded-lg text-red-600"
+                                            >
+                                                <Icons.Trash />
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-slate-50 rounded-lg p-4">
+                                            <p className="text-sm font-semibold text-slate-600 mb-2">
+                                                Übungen ({template.exercises.length}):
+                                            </p>
+                                            <div className="space-y-2">
+                                                {template.exercises.map(exId => {
+                                                    const exercise = exerciseDatabase.find(ex => ex.id === exId);
+                                                    return exercise ? (
+                                                        <div key={exId} className="flex items-center gap-2 text-sm text-slate-700">
+                                                            <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                                                            <span className="font-semibold">{exercise.name}</span>
+                                                            <span className="text-slate-500">({exercise.device})</span>
+                                                        </div>
+                                                    ) : null;
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {planTemplates.length === 0 && (
+                                <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+                                    <p className="text-slate-500 text-lg mb-4">Noch keine Trainingsplan-Vorlagen erstellt</p>
+                                    <button
+                                        onClick={() => setShowAddTemplate(true)}
+                                        className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+                                    >
+                                        Erste Vorlage erstellen
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Add Template Modal */}
+                            {showAddTemplate && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                                    <div className="bg-white rounded-2xl p-6 max-w-2xl w-full my-8">
+                                        <h3 className="text-2xl font-bold mb-4">Neue Trainingsplan-Vorlage</h3>
+                                        <div className="space-y-4">
+                                            <input
+                                                type="text"
+                                                placeholder="Vorlagenname (z.B. 'Ganzkörper Anfänger')"
+                                                value={newTemplate.name}
+                                                onChange={(e) => setNewTemplate({...newTemplate, name: e.target.value})}
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-purple-500 focus:outline-none"
+                                            />
+                                            <textarea
+                                                placeholder="Beschreibung (optional)"
+                                                value={newTemplate.description}
+                                                onChange={(e) => setNewTemplate({...newTemplate, description: e.target.value})}
+                                                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-purple-500 focus:outline-none h-20"
+                                            />
+                                            
+                                            <div className="border-2 border-slate-200 rounded-lg p-4 max-h-96 overflow-y-auto">
+                                                <p className="font-semibold text-slate-700 mb-3">Übungen auswählen:</p>
+                                                {exerciseDatabase.length === 0 ? (
+                                                    <p className="text-slate-500 text-sm">Keine Übungen in der Datenbank. Erstelle zuerst Übungen!</p>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {exerciseDatabase.map(exercise => (
+                                                            <label key={exercise.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedExercisesForTemplate.includes(exercise.id)}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            setSelectedExercisesForTemplate([...selectedExercisesForTemplate, exercise.id]);
+                                                                        } else {
+                                                                            setSelectedExercisesForTemplate(selectedExercisesForTemplate.filter(id => id !== exercise.id));
+                                                                        }
+                                                                    }}
+                                                                    className="w-5 h-5"
+                                                                />
+                                                                <div>
+                                                                    <span className="font-semibold text-slate-800">{exercise.name}</span>
+                                                                    <span className="text-slate-500 text-sm ml-2">({exercise.device} - {exercise.category})</span>
+                                                                </div>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {selectedExercisesForTemplate.length > 0 && (
+                                                <div className="bg-purple-50 rounded-lg p-4">
+                                                    <p className="text-sm font-semibold text-purple-800 mb-2">
+                                                        Ausgewählt: {selectedExercisesForTemplate.length} Übung(en)
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-3 mt-6">
+                                            <button
+                                                onClick={() => {
+                                                    setShowAddTemplate(false);
+                                                    setNewTemplate({ name: '', description: '', exercises: [] });
+                                                    setSelectedExercisesForTemplate([]);
+                                                }}
+                                                className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-300"
+                                            >
+                                                Abbrechen
+                                            </button>
+                                            <button
+                                                onClick={addTemplate}
+                                                className="flex-1 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+                                            >
+                                                Vorlage erstellen
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ===== RENDER CLIENT LIST =====
+            if (activeView === 'clientList') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setActiveView('home')} className="p-2 hover:bg-slate-100 rounded-lg">
+                                            <Icons.ArrowLeft />
+                                        </button>
+                                        <h1 className="text-3xl font-bold text-slate-800">Kunden</h1>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowAddClient(true)}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700"
+                                    >
+                                        <Icons.Plus />
+                                        Neuer Kunde
+                                    </button>
+                                </div>
+
+                                <div className="relative">
+                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                                        <Icons.Search />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Kunde suchen..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:outline-none text-lg"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {filteredClients.map(client => (
+                                    <div key={client.id} className="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition-shadow">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-slate-800">{client.name}</h3>
+                                                <p className="text-slate-500 flex items-center gap-2 mt-1">
+                                                    <Icons.Calendar />
+                                                    {client.lastSession}
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedClient(client);
+                                                        setActiveView('clientDetail');
+                                                    }}
+                                                    className="p-2 hover:bg-slate-100 rounded-lg"
+                                                >
+                                                    <Icons.Settings />
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteClient(client.id)}
+                                                    className="p-2 hover:bg-red-100 rounded-lg text-red-600"
+                                                >
+                                                    <Icons.Trash />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2 mb-4">
+                                            {client.trainingPlans && client.trainingPlans.length > 0 ? (
+                                                client.trainingPlans.map((plan, idx) => (
+                                                    <div key={idx} className="bg-slate-50 rounded-lg p-3">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <p className="font-semibold text-slate-700">{plan.templateName}</p>
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => startSession(client, idx)}
+                                                                    className="px-3 py-1 bg-green-600 text-white rounded text-sm font-semibold hover:bg-green-700"
+                                                                >
+                                                                    1:1
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => prepareSecondClient(client, idx)}
+                                                                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-semibold hover:bg-blue-700"
+                                                                >
+                                                                    2:1
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500">{plan.exercises.length} Übungen</p>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-slate-500 text-sm">Noch keine Trainingspläne zugewiesen</p>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => {
+                                                setSelectedClient(client);
+                                                setActiveView('clientDetail');
+                                            }}
+                                            className="w-full py-2 bg-blue-100 text-blue-700 rounded-lg font-semibold hover:bg-blue-200"
+                                        >
+                                            Pläne verwalten
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {filteredClients.length === 0 && (
+                                <div className="text-center py-12">
+                                    <p className="text-slate-500 text-lg">Keine Kunden gefunden</p>
+                                </div>
+                            )}
+
+                            {/* Add Client Modal */}
+                            {showAddClient && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                                    <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+                                        <h3 className="text-2xl font-bold mb-4">Neuer Kunde</h3>
+                                        <input
+                                            type="text"
+                                            placeholder="Name"
+                                            value={newClient.name}
+                                            onChange={(e) => setNewClient({ name: e.target.value })}
+                                            className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg mb-4 text-lg focus:border-blue-500 focus:outline-none"
+                                            autoFocus
+                                        />
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setShowAddClient(false)}
+                                                className="flex-1 py-3 bg-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-300"
+                                            >
+                                                Abbrechen
+                                            </button>
+                                            <button
+                                                onClick={addClient}
+                                                className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                                            >
+                                                Hinzufügen
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Select Second Client Modal for 2:1 Training */}
+                            {showSelectSecondClient && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                                    <div className="bg-white rounded-2xl p-6 max-w-4xl w-full my-8">
+                                        <h3 className="text-2xl font-bold mb-2">Zweiten Kunden für 2:1 Training wählen</h3>
+                                        <p className="text-slate-600 mb-4">Erster Kunde: <span className="font-bold">{selectedClient?.client?.name}</span></p>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                                            {clients.filter(c => c.id !== selectedClient?.client?.id).map(client => (
+                                                <div key={client.id} className="border-2 border-slate-200 rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 transition-all">
+                                                    <h4 className="font-bold text-lg text-slate-800 mb-2">{client.name}</h4>
+                                                    {client.trainingPlans && client.trainingPlans.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {client.trainingPlans.map((plan, idx) => (
+                                                                <button
+                                                                    key={idx}
+                                                                    onClick={() => startDualSession(client, idx)}
+                                                                    className="w-full p-2 bg-slate-50 hover:bg-blue-100 rounded text-left transition-all"
+                                                                >
+                                                                    <p className="font-semibold text-sm text-slate-700">{plan.templateName}</p>
+                                                                    <p className="text-xs text-slate-500">{plan.exercises.length} Übungen</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-slate-500 text-sm">Keine Trainingspläne</p>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-6">
+                                            <button
+                                                onClick={() => setShowSelectSecondClient(false)}
+                                                className="w-full py-3 bg-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-300"
+                                            >
+                                                Abbrechen
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ===== RENDER CLIENT DETAIL (continues in next part due to length) =====
+            if (activeView === 'clientDetail') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setActiveView('clientList')} className="p-2 hover:bg-slate-100 rounded-lg">
+                                            <Icons.ArrowLeft />
+                                        </button>
+                                        <div>
+                                            <h1 className="text-3xl font-bold text-slate-800">{selectedClient.name}</h1>
+                                            <p className="text-slate-500">Trainingspläne verwalten</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {selectedClient.trainingHistory && selectedClient.trainingHistory.length > 0 && (
+                                            <button
+                                                onClick={() => setActiveView('clientHistory')}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700"
+                                            >
+                                                <Icons.Calendar />
+                                                Historie ({selectedClient.trainingHistory.length})
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setShowAssignPlan(true)}
+                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700"
+                                        >
+                                            <Icons.Plus />
+                                            Plan zuweisen
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Global Device Settings Overview */}
+                            {selectedClient.deviceSettings && Object.keys(selectedClient.deviceSettings).length > 0 && (
+                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-lg p-6 mb-6 border-2 border-blue-200">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <Icons.Settings />
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-slate-800">Globale Geräteeinstellungen</h2>
+                                            <p className="text-sm text-slate-600">Diese Einstellungen werden automatisch in alle neuen Trainingspläne übernommen</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {Object.entries(selectedClient.deviceSettings).map(([exerciseId, settings]) => {
+                                            const exercise = exerciseDatabase.find(ex => ex.id === exerciseId);
+                                            if (!exercise || !settings) return null;
+                                            return (
+                                                <div key={exerciseId} className="bg-white rounded-lg p-4 shadow">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="font-bold text-slate-800">{exercise.name}</span>
+                                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono font-semibold">
+                                                            {exercise.device}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-600">{settings}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-4">
+                                        💡 Tipp: Diese Einstellungen werden gespeichert wenn du sie in einem Trainingsplan änderst oder während einer Session aktualisierst.
+                                    </p>
+                                </div>
+                            )}
+
+                            {selectedClient.trainingPlans && selectedClient.trainingPlans.length > 0 ? (
+                                selectedClient.trainingPlans.map((plan, planIdx) => (
+                                    <div key={planIdx} className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-2xl font-bold text-slate-800">{plan.templateName}</h2>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => startSession(selectedClient, planIdx)}
+                                                    className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                                                >
+                                                    <Icons.Dumbbell />
+                                                    Training starten
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteClientPlan(planIdx)}
+                                                    className="px-4 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700"
+                                                >
+                                                    <Icons.Trash />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full">
+                                                <thead className="bg-slate-100 border-b-2 border-slate-200">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-700">Übung</th>
+                                                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-700">Gerät</th>
+                                                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-700">Einstellungen</th>
+                                                        <th className="px-4 py-3 text-center text-sm font-bold text-slate-700">Gewicht</th>
+                                                        <th className="px-4 py-3 text-center text-sm font-bold text-slate-700">Wdh.</th>
+                                                        <th className="px-4 py-3 text-center text-sm font-bold text-slate-700">Sätze</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {plan.exercises.map((ex, exIdx) => {
+                                                        const dbExercise = exerciseDatabase.find(e => e.id === ex.exerciseId);
+                                                        return (
+                                                            <tr key={exIdx} className="border-b border-slate-100 hover:bg-slate-50">
+                                                                <td className="px-4 py-3 font-semibold text-slate-800">{dbExercise?.name || 'Unbekannt'}</td>
+                                                                <td className="px-4 py-3">
+                                                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
+                                                                        {dbExercise?.device || '-'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={ex.settings}
+                                                                        onChange={(e) => updateClientExercise(planIdx, exIdx, 'settings', e.target.value)}
+                                                                        placeholder="Sitz: 3, Rücken: 2"
+                                                                        className="w-full px-2 py-1 border border-slate-200 rounded text-sm focus:border-blue-500 focus:outline-none"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-3 text-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ex.weight}
+                                                                        onChange={(e) => updateClientExercise(planIdx, exIdx, 'weight', parseFloat(e.target.value) || 0)}
+                                                                        className="w-20 px-2 py-1 border border-slate-200 rounded text-center font-bold focus:border-blue-500 focus:outline-none"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-3 text-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ex.reps}
+                                                                        onChange={(e) => updateClientExercise(planIdx, exIdx, 'reps', parseInt(e.target.value) || 0)}
+                                                                        className="w-16 px-2 py-1 border border-slate-200 rounded text-center font-bold focus:border-blue-500 focus:outline-none"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-3 text-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={ex.sets}
+                                                                        onChange={(e) => updateClientExercise(planIdx, exIdx, 'sets', parseInt(e.target.value) || 3)}
+                                                                        className="w-16 px-2 py-1 border border-slate-200 rounded text-center font-bold focus:border-blue-500 focus:outline-none"
+                                                                    />
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+                                    <p className="text-slate-500 text-lg mb-4">Noch keine Trainingspläne zugewiesen</p>
+                                    <button
+                                        onClick={() => setShowAssignPlan(true)}
+                                        className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+                                    >
+                                        Ersten Plan zuweisen
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Assign Plan Modal */}
+                            {showAssignPlan && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                                    <div className="bg-white rounded-2xl p-6 max-w-2xl w-full">
+                                        <h3 className="text-2xl font-bold mb-4">Trainingsplan zuweisen</h3>
+                                        {planTemplates.length === 0 ? (
+                                            <div className="text-center py-8">
+                                                <p className="text-slate-500 mb-4">Keine Vorlagen verfügbar. Erstelle zuerst eine Vorlage!</p>
+                                                <button
+                                                    onClick={() => {
+                                                        setShowAssignPlan(false);
+                                                        setActiveView('planTemplates');
+                                                    }}
+                                                    className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+                                                >
+                                                    Zu Vorlagen
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                                {planTemplates.map(template => (
+                                                    <div
+                                                        key={template.id}
+                                                        onClick={() => assignPlanToClient(template.id)}
+                                                        className="p-4 border-2 border-slate-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 cursor-pointer transition-all"
+                                                    >
+                                                        <h4 className="font-bold text-lg text-slate-800">{template.name}</h4>
+                                                        {template.description && (
+                                                            <p className="text-sm text-slate-600 mt-1">{template.description}</p>
+                                                        )}
+                                                        <p className="text-sm text-slate-500 mt-2">{template.exercises.length} Übungen</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="mt-6">
+                                            <button
+                                                onClick={() => setShowAssignPlan(false)}
+                                                className="w-full py-3 bg-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-300"
+                                            >
+                                                Abbrechen
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ===== RENDER CLIENT HISTORY =====
+            if (activeView === 'clientHistory') {
+                const history = selectedClient.trainingHistory || [];
+                
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setActiveView('clientDetail')} className="p-2 hover:bg-slate-100 rounded-lg">
+                                            <Icons.ArrowLeft />
+                                        </button>
+                                        <div>
+                                            <h1 className="text-3xl font-bold text-slate-800">{selectedClient.name}</h1>
+                                            <p className="text-slate-500">Trainings-Historie</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-2xl font-bold text-slate-800">{history.length}</p>
+                                        <p className="text-sm text-slate-500">Trainings absolviert</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {history.length === 0 ? (
+                                <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+                                    <p className="text-slate-500 text-lg">Noch keine Trainings absolviert</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {history.map((session, sessionIdx) => (
+                                        <div key={sessionIdx} className="bg-white rounded-2xl shadow-lg p-6">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-slate-800">{session.planName}</h3>
+                                                    <p className="text-slate-500 flex items-center gap-2 mt-1">
+                                                        <Icons.Calendar />
+                                                        {new Date(session.timestamp).toLocaleString('de-DE', {
+                                                            weekday: 'long',
+                                                            year: 'numeric',
+                                                            month: 'long',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-sm text-slate-600">{session.exercises.length} Übungen</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead className="bg-slate-50">
+                                                        <tr>
+                                                            <th className="px-4 py-2 text-left text-sm font-semibold text-slate-600">Übung</th>
+                                                            <th className="px-4 py-2 text-left text-sm font-semibold text-slate-600">Gerät</th>
+                                                            <th className="px-4 py-2 text-center text-sm font-semibold text-slate-600">Gewicht</th>
+                                                            <th className="px-4 py-2 text-center text-sm font-semibold text-slate-600">Wdh.</th>
+                                                            <th className="px-4 py-2 text-center text-sm font-semibold text-slate-600">Sätze</th>
+                                                            <th className="px-4 py-2 text-left text-sm font-semibold text-slate-600">Einstellungen</th>
+                                                            <th className="px-4 py-2 text-center text-sm font-semibold text-slate-600">Verlauf</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {session.exercises.map((ex, exIdx) => {
+                                                            // Find previous same exercise
+                                                            let previousEx = null;
+                                                            for (let i = sessionIdx + 1; i < history.length; i++) {
+                                                                const found = history[i].exercises.find(e => e.exerciseId === ex.exerciseId);
+                                                                if (found) {
+                                                                    previousEx = found;
+                                                                    break;
+                                                                }
+                                                            }
+                                                            
+                                                            return (
+                                                                <tr key={exIdx} className="border-t border-slate-100">
+                                                                    <td className="px-4 py-3 font-semibold text-slate-800">{ex.exerciseName}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                                                                            {ex.device}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <div className="flex items-center justify-center gap-1">
+                                                                            <span className="font-bold text-slate-800">{ex.weight}</span>
+                                                                            <span className="text-xs text-slate-500">kg</span>
+                                                                            {previousEx && previousEx.weight !== ex.weight && (
+                                                                                <span className={`text-xs font-semibold ml-1 ${ex.weight > previousEx.weight ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                    {ex.weight > previousEx.weight ? '↗' : '↘'} {Math.abs(ex.weight - previousEx.weight)}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <div className="flex items-center justify-center gap-1">
+                                                                            <span className="font-bold text-slate-800">{ex.reps}</span>
+                                                                            {previousEx && previousEx.reps !== ex.reps && (
+                                                                                <span className={`text-xs font-semibold ml-1 ${ex.reps > previousEx.reps ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                    {ex.reps > previousEx.reps ? '↗' : '↘'} {Math.abs(ex.reps - previousEx.reps)}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center font-bold text-slate-800">{ex.sets}</td>
+                                                                    <td className="px-4 py-3 text-sm text-slate-600">{ex.settings || '-'}</td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setSelectedHistoryExercise(ex.exerciseId);
+                                                                                // Could open detailed history modal
+                                                                            }}
+                                                                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs font-semibold text-slate-700"
+                                                                        >
+                                                                            Details
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            {/* Volume calculation */}
+                                            {(() => {
+                                                const totalVolume = session.exercises.reduce((sum, ex) => 
+                                                    sum + (ex.weight * ex.reps * ex.sets), 0
+                                                );
+                                                return (
+                                                    <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
+                                                        <div className="text-sm text-slate-600">
+                                                            <span className="font-semibold">Gesamtvolumen:</span> {totalVolume.toLocaleString()} kg
+                                                        </div>
+                                                        <div className="text-sm text-slate-600">
+                                                            Dauer: ~{session.exercises.length * 3} Min (geschätzt)
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ===== RENDER ACTIVE SESSION =====
+            if (activeView === 'activeSession') {
+                const currentExercise = sessionExercises[currentExerciseIndex];
+                const progress = ((sessionExercises.filter(ex => ex.completed).length / sessionExercises.length) * 100).toFixed(0);
+                
+                const currentExercise2 = selectedClient2 ? sessionExercises2[currentExerciseIndex2] : null;
+                const progress2 = selectedClient2 ? ((sessionExercises2.filter(ex => ex.completed).length / sessionExercises2.length) * 100).toFixed(0) : 0;
+                const is2on1Mode = !!selectedClient2;
+
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 p-4">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h2 className="text-3xl font-bold text-slate-800">
+                                            {selectedClient.name}
+                                            {selectedClient2 && <span className="text-blue-600"> + {selectedClient2.name}</span>}
+                                        </h2>
+                                        <p className="text-slate-600 mt-1">
+                                            {is2on1Mode ? '2:1 Training Session' : 'Training Session'}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={saveSession}
+                                            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2"
+                                        >
+                                            <Icons.Save />
+                                            Speichern
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (confirm('Training beenden ohne zu speichern?')) {
+                                                    setActiveView('clientList');
+                                                }
+                                            }}
+                                            className="px-6 py-3 bg-slate-600 text-white rounded-lg font-semibold hover:bg-slate-700"
+                                        >
+                                            Abbrechen
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className={`mt-4 ${is2on1Mode ? 'grid grid-cols-2 gap-4' : ''}`}>
+                                    {/* Client 1 Progress */}
+                                    <div>
+                                        {is2on1Mode && <p className="text-sm font-semibold text-slate-600 mb-1">{selectedClient.name}</p>}
+                                        <div className="flex justify-between mb-2">
+                                            <span className="text-sm font-semibold text-slate-600">Fortschritt</span>
+                                            <span className="text-sm font-semibold text-slate-600">{progress}%</span>
+                                        </div>
+                                        <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-500"
+                                                style={{ width: `${progress}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Client 2 Progress */}
+                                    {is2on1Mode && (
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-600 mb-1">{selectedClient2.name}</p>
+                                            <div className="flex justify-between mb-2">
+                                                <span className="text-sm font-semibold text-slate-600">Fortschritt</span>
+                                                <span className="text-sm font-semibold text-slate-600">{progress2}%</span>
+                                            </div>
+                                            <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-500"
+                                                    style={{ width: `${progress2}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Exercise Cards - Side by Side for 2:1, Single for 1:1 */}
+                            <div className={`${is2on1Mode ? 'grid grid-cols-2 gap-4' : ''} mb-6`}>
+                                {/* Client 1 Exercise Card */}
+                                {currentExercise && !currentExercise.completed && (
+                                    <div className={`bg-white rounded-2xl shadow-2xl p-6 ${is2on1Mode ? 'border-4 border-green-500' : 'border-4 border-green-500'}`}>
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div>
+                                                {is2on1Mode && <p className="text-lg font-bold text-green-600 mb-2">{selectedClient.name}</p>}
+                                                <h3 className="text-3xl font-bold text-slate-800 mb-2">{currentExercise.name}</h3>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="inline-block px-3 py-1 bg-blue-600 text-white rounded-lg font-mono text-lg font-bold">
+                                                        {currentExercise.device}
+                                                    </span>
+                                                    <span className="text-xl text-slate-600">
+                                                        Satz {currentExercise.currentSet}/{currentExercise.sets}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {timerActive && pauseTimer > 0 && !is2on1Mode && (
+                                                <div className="flex items-center gap-2 bg-orange-100 px-3 py-1 rounded-lg">
+                                                    <Icons.Clock />
+                                                    <span className="text-xl font-bold text-orange-600">{pauseTimer}s</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="bg-slate-50 rounded-xl p-4 mb-4">
+                                            <p className="text-xs font-bold text-slate-600 mb-1">GERÄTEEINSTELLUNGEN:</p>
+                                            <p className="text-lg font-semibold text-slate-800">{currentExercise.settings || 'Keine'}</p>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3 mb-4">
+                                            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3">
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">GEWICHT (kg)</label>
+                                                <input
+                                                    type="number"
+                                                    value={currentExercise.weight}
+                                                    onChange={(e) => updateExerciseData(currentExerciseIndex, 'weight', parseFloat(e.target.value) || 0, false)}
+                                                    className="w-full text-2xl font-bold text-center py-2 rounded-lg border-2 border-blue-300 focus:border-blue-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3">
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">WIEDERHOLUNGEN</label>
+                                                <input
+                                                    type="number"
+                                                    value={currentExercise.reps}
+                                                    onChange={(e) => updateExerciseData(currentExerciseIndex, 'reps', parseInt(e.target.value) || 0, false)}
+                                                    className="w-full text-2xl font-bold text-center py-2 rounded-lg border-2 border-green-300 focus:border-green-500 focus:outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            onClick={() => completeSet(currentExerciseIndex, false)}
+                                            className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl text-lg font-bold hover:from-green-700 hover:to-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                                        >
+                                            <Icons.Check />
+                                            {currentExercise.currentSet < currentExercise.sets ? 'Satz fertig' : 'Übung fertig'}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Client 2 Exercise Card (only in 2:1 mode) */}
+                                {is2on1Mode && currentExercise2 && !currentExercise2.completed && (
+                                    <div className="bg-white rounded-2xl shadow-2xl p-6 border-4 border-blue-500">
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div>
+                                                <p className="text-lg font-bold text-blue-600 mb-2">{selectedClient2.name}</p>
+                                                <h3 className="text-3xl font-bold text-slate-800 mb-2">{currentExercise2.name}</h3>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="inline-block px-3 py-1 bg-purple-600 text-white rounded-lg font-mono text-lg font-bold">
+                                                        {currentExercise2.device}
+                                                    </span>
+                                                    <span className="text-xl text-slate-600">
+                                                        Satz {currentExercise2.currentSet}/{currentExercise2.sets}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-50 rounded-xl p-4 mb-4">
+                                            <p className="text-xs font-bold text-slate-600 mb-1">GERÄTEEINSTELLUNGEN:</p>
+                                            <p className="text-lg font-semibold text-slate-800">{currentExercise2.settings || 'Keine'}</p>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3 mb-4">
+                                            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3">
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">GEWICHT (kg)</label>
+                                                <input
+                                                    type="number"
+                                                    value={currentExercise2.weight}
+                                                    onChange={(e) => updateExerciseData(currentExerciseIndex2, 'weight', parseFloat(e.target.value) || 0, true)}
+                                                    className="w-full text-2xl font-bold text-center py-2 rounded-lg border-2 border-blue-300 focus:border-blue-500 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3">
+                                                <label className="block text-xs font-bold text-slate-600 mb-1">WIEDERHOLUNGEN</label>
+                                                <input
+                                                    type="number"
+                                                    value={currentExercise2.reps}
+                                                    onChange={(e) => updateExerciseData(currentExerciseIndex2, 'reps', parseInt(e.target.value) || 0, true)}
+                                                    className="w-full text-2xl font-bold text-center py-2 rounded-lg border-2 border-purple-300 focus:border-purple-500 focus:outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            onClick={() => completeSet(currentExerciseIndex2, true)}
+                                            className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl text-lg font-bold hover:from-blue-700 hover:to-blue-800 transition-all flex items-center justify-center gap-2 shadow-lg"
+                                        >
+                                            <Icons.Check />
+                                            {currentExercise2.currentSet < currentExercise2.sets ? 'Satz fertig' : 'Übung fertig'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Timer Display for 2:1 Mode */}
+                            {is2on1Mode && timerActive && pauseTimer > 0 && (
+                                <div className="bg-white rounded-xl shadow-lg p-4 mb-6 flex items-center justify-center">
+                                    <div className="flex items-center gap-3 bg-orange-100 px-6 py-3 rounded-lg">
+                                        <Icons.Clock />
+                                        <span className="text-3xl font-bold text-orange-600">Pause: {pauseTimer}s</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Exercise Lists */}
+                            <div className={`${is2on1Mode ? 'grid grid-cols-2 gap-4' : ''}`}>
+                                {/* Client 1 Exercise List */}
+                                <div className="bg-white rounded-2xl shadow-lg p-6">
+                                    <h4 className="text-xl font-bold text-slate-800 mb-4">
+                                        {is2on1Mode && <span className="text-green-600">{selectedClient.name}: </span>}
+                                        Alle Übungen
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {sessionExercises.map((exercise, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => setCurrentExerciseIndex(idx)}
+                                                className={`w-full p-3 rounded-xl text-left transition-all ${
+                                                    exercise.completed
+                                                        ? 'bg-green-50 border-2 border-green-500'
+                                                        : idx === currentExerciseIndex
+                                                        ? 'bg-blue-50 border-2 border-blue-500'
+                                                        : 'bg-slate-50 border-2 border-slate-200 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        {exercise.completed && <Icons.Check />}
+                                                        <div>
+                                                            <p className="text-base font-semibold text-slate-800">{exercise.name}</p>
+                                                            <p className="text-xs text-slate-600">
+                                                                {exercise.device} • {exercise.weight}kg × {exercise.reps} × {exercise.sets}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    {!exercise.completed && (
+                                                        <span className="text-sm font-semibold text-slate-600">
+                                                            {exercise.currentSet}/{exercise.sets}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Client 2 Exercise List (only in 2:1 mode) */}
+                                {is2on1Mode && (
+                                    <div className="bg-white rounded-2xl shadow-lg p-6">
+                                        <h4 className="text-xl font-bold text-slate-800 mb-4">
+                                            <span className="text-blue-600">{selectedClient2.name}: </span>
+                                            Alle Übungen
+                                        </h4>
+                                        <div className="space-y-2">
+                                            {sessionExercises2.map((exercise, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setCurrentExerciseIndex2(idx)}
+                                                    className={`w-full p-3 rounded-xl text-left transition-all ${
+                                                        exercise.completed
+                                                            ? 'bg-blue-50 border-2 border-blue-500'
+                                                            : idx === currentExerciseIndex2
+                                                            ? 'bg-purple-50 border-2 border-purple-500'
+                                                            : 'bg-slate-50 border-2 border-slate-200 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex items-center gap-2">
+                                                            {exercise.completed && <Icons.Check />}
+                                                            <div>
+                                                                <p className="text-base font-semibold text-slate-800">{exercise.name}</p>
+                                                                <p className="text-xs text-slate-600">
+                                                                    {exercise.device} • {exercise.weight}kg × {exercise.reps} × {exercise.sets}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        {!exercise.completed && (
+                                                            <span className="text-sm font-semibold text-slate-600">
+                                                                {exercise.currentSet}/{exercise.sets}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return null;
+        };
+
+        ReactDOM.render(<PTManagementSystem />, document.getElementById('root'));
+    </script>
+</body>
+</html>
